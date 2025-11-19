@@ -1,0 +1,7 @@
+{
+  "name": "BodyFatAI",
+  "description": "Estimate body fat percentage from photos using advanced AI vision analysis. Upload a photo to get a breakdown of muscle definition and estimated metrics.",
+  "requestFramePermissions": [
+    "camera"
+  ]
+}
