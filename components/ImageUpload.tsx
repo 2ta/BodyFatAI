@@ -22,11 +22,37 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({ onImageSelect, onClear
     if (!file.type.startsWith('image/')) return;
     
     const reader = new FileReader();
-    reader.onloadend = () => {
-      const result = reader.result as string;
-      // Extract base64 data part
-      const base64 = result.split(',')[1];
-      onImageSelect(base64);
+    reader.onloadend = (e) => {
+      const result = e.target?.result as string;
+      
+      // Resize and compress image before sending
+      const img = new Image();
+      img.onload = () => {
+        // Reduced to 1024 to prevent XHR/Payload errors on mobile networks
+        const maxDimension = 1024; 
+        let width = img.width;
+        let height = img.height;
+
+        if (width > maxDimension || height > maxDimension) {
+          const ratio = Math.min(maxDimension / width, maxDimension / height);
+          width = Math.round(width * ratio);
+          height = Math.round(height * ratio);
+        }
+
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+           ctx.drawImage(img, 0, 0, width, height);
+           // Compress to jpeg with 0.7 quality to keep payload light
+           const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
+           const base64 = dataUrl.split(',')[1];
+           onImageSelect(base64);
+        }
+      };
+      img.src = result;
     };
     reader.readAsDataURL(file);
   };
@@ -61,8 +87,8 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({ onImageSelect, onClear
       const stream = await navigator.mediaDevices.getUserMedia({ 
         video: { 
             facingMode: 'user', // Default to front camera (mirror style)
-            width: { ideal: 1920 },
-            height: { ideal: 1080 }
+            width: { ideal: 1280 }, // Reduced ideal resolution
+            height: { ideal: 720 }
         } 
       });
       streamRef.current = stream;
@@ -93,16 +119,16 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({ onImageSelect, onClear
       const video = videoRef.current;
       const canvas = canvasRef.current;
       
+      // Capture resolution
       canvas.width = video.videoWidth;
       canvas.height = video.videoHeight;
       
       const context = canvas.getContext('2d');
       if (context) {
-        // Draw current video frame to canvas
         context.drawImage(video, 0, 0, canvas.width, canvas.height);
         
-        // Convert to base64
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.9);
+        // Convert to base64 with reduced quality
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.7);
         const base64 = dataUrl.split(',')[1];
         
         stopCamera();
@@ -128,17 +154,16 @@ export const ImageUpload: React.FC<ImageUploadProps> = ({ onImageSelect, onClear
           <img 
             src={`data:image/jpeg;base64,${selectedImage}`} 
             alt="Uploaded analysis" 
-            className="w-full h-auto max-h-[500px] object-cover"
+            className={`w-full h-auto max-h-[500px] object-cover transition-opacity duration-300 ${loading ? 'opacity-50 grayscale-[50%]' : 'opacity-100'}`}
           />
           {!loading && (
-            <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity duration-300 flex items-center justify-center">
-              <button
-                onClick={onClear}
-                className="bg-red-500/90 hover:bg-red-600 text-white p-3 rounded-full backdrop-blur-sm transform hover:scale-110 transition-all shadow-lg"
-              >
-                <X size={24} />
-              </button>
-            </div>
+            <button
+              onClick={onClear}
+              className="absolute top-3 right-3 bg-black/60 hover:bg-red-500/90 text-white p-2 rounded-full backdrop-blur-md border border-white/10 shadow-lg transition-all transform hover:scale-105 active:scale-95 z-20"
+              title="Remove image"
+            >
+              <X size={20} />
+            </button>
           )}
         </div>
       </div>

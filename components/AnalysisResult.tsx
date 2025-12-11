@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { BodyFatAnalysis } from '../types';
-import { Activity, Info, AlertTriangle, CheckCircle2, Share2, Download, X } from 'lucide-react';
+import { Activity, Info, AlertTriangle, CheckCircle2, Share2, Download, X, Edit3, Camera, Lightbulb } from 'lucide-react';
 
 interface AnalysisResultProps {
   data: BodyFatAnalysis;
@@ -11,20 +11,28 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ data, originalIm
   const [showShareModal, setShowShareModal] = useState(false);
   const [shareImageUrl, setShareImageUrl] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState(false);
+  
+  // Custom branding state
+  const [brandingText, setBrandingText] = useState('BodyFatAI Analysis');
+  const [debouncedBrandingText, setDebouncedBrandingText] = useState(brandingText);
 
-  const generateShareImage = async () => {
-    if (!originalImage) return;
+  // Cache the loaded image to avoid reloading it constantly
+  const imageRef = useRef<HTMLImageElement | null>(null);
+
+  // Debounce the text input to prevent canvas trashing
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      setDebouncedBrandingText(brandingText);
+    }, 500);
+    return () => clearTimeout(timer);
+  }, [brandingText]);
+
+  const drawCanvas = useCallback(async (text: string) => {
+    if (!imageRef.current) return;
+    
     setIsGenerating(true);
-
     try {
-      const img = new Image();
-      img.src = `data:image/jpeg;base64,${originalImage}`;
-      
-      await new Promise((resolve, reject) => {
-        img.onload = resolve;
-        img.onerror = reject;
-      });
-
+      const img = imageRef.current;
       const canvas = document.createElement('canvas');
       const ctx = canvas.getContext('2d');
       if (!ctx) return;
@@ -37,11 +45,10 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ data, originalIm
       ctx.drawImage(img, 0, 0);
 
       // --- Draw Overlay ---
-      // Gradient from bottom for text readability
-      const gradientHeight = canvas.height * 0.5; // Bottom 50%
+      const gradientHeight = canvas.height * 0.5; 
       const gradient = ctx.createLinearGradient(0, canvas.height - gradientHeight, 0, canvas.height);
       gradient.addColorStop(0, 'transparent');
-      gradient.addColorStop(0.4, 'rgba(2, 6, 23, 0.7)'); // slate-950 with opacity
+      gradient.addColorStop(0.4, 'rgba(2, 6, 23, 0.7)');
       gradient.addColorStop(1, 'rgba(2, 6, 23, 0.95)');
       
       ctx.fillStyle = gradient;
@@ -51,12 +58,17 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ data, originalIm
       const baseUnit = Math.min(canvas.width, canvas.height);
       const padding = baseUnit * 0.05;
 
-      // 1. "BodyFatAI" Branding (Bottom Right)
+      // 1. Custom Branding (Bottom Right)
       const brandSize = baseUnit * 0.04;
       ctx.font = `bold ${brandSize}px "Inter", sans-serif`;
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.6)';
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
       ctx.textAlign = 'right';
-      ctx.fillText('BodyFatAI Analysis', canvas.width - padding, canvas.height - padding);
+      ctx.shadowColor = "rgba(0,0,0,0.5)";
+      ctx.shadowBlur = 4;
+      ctx.fillText(text, canvas.width - padding, canvas.height - padding);
+      
+      // Reset shadow
+      ctx.shadowBlur = 0;
 
       // 2. Estimated Range (Main Metric - Bottom Left)
       const valueSize = baseUnit * 0.12;
@@ -71,19 +83,40 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ data, originalIm
       ctx.fillStyle = '#cbd5e1'; // Slate-300
       ctx.fillText('Estimated Body Fat', padding, canvas.height - padding - (baseUnit * 0.06) - valueSize - (baseUnit * 0.01));
 
-      // 4. Confidence (Optional small badge style text next to label)
-      // ctx.fillStyle = '#94a3b8';
-      // ctx.fillText(`Confidence: ${data.confidenceLevel}`, padding, canvas.height - padding);
-
       const dataUrl = canvas.toDataURL('image/png', 1.0);
       setShareImageUrl(dataUrl);
-      setShowShareModal(true);
     } catch (e) {
-      console.error("Failed to generate share image", e);
+      console.error("Failed to draw canvas", e);
     } finally {
       setIsGenerating(false);
     }
+  }, [data.estimatedRange]);
+
+  const initShare = async () => {
+    if (!originalImage) return;
+    setShowShareModal(true);
+    
+    if (!imageRef.current) {
+      setIsGenerating(true);
+      const img = new Image();
+      img.src = `data:image/jpeg;base64,${originalImage}`;
+      await new Promise((resolve) => {
+        img.onload = resolve;
+      });
+      imageRef.current = img;
+    }
+    
+    // Initial draw
+    drawCanvas(brandingText);
   };
+
+  // Redraw when debounced text changes and modal is open
+  useEffect(() => {
+    if (showShareModal && imageRef.current) {
+      drawCanvas(debouncedBrandingText);
+    }
+  }, [debouncedBrandingText, showShareModal, drawCanvas]);
+
 
   const handleDownload = () => {
     if (shareImageUrl) {
@@ -102,38 +135,57 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ data, originalIm
       const file = new File([blob], "bodyfat-analysis.png", { type: "image/png" });
       
       const shareData = {
-        title: 'My BodyFatAI Analysis',
-        text: `Estimated Body Fat: ${data.estimatedRange}. Analyzed by AI.`,
+        title: brandingText,
+        text: `Estimated Body Fat: ${data.estimatedRange}\nConfidence Level: ${data.confidenceLevel}\n\nAnalyzed by BodyFatAI`,
         files: [file],
       };
 
-      // Check if the browser supports sharing files
       if (navigator.canShare && navigator.canShare(shareData)) {
         await navigator.share(shareData);
       } else {
-        // Fallback to download if share API not supported or cannot share files
+        // Fallback if share is not supported on device/browser
+        alert("Sharing is not supported on this device. Downloading image instead.");
         handleDownload();
       }
     } catch (err: any) {
-      // Ignore AbortError which happens when user cancels the share sheet
       if (err.name === 'AbortError') {
-        console.log('Share canceled by user');
         return;
       }
       console.error("Error sharing", err);
+      // Fallback on error
+      handleDownload();
     }
   };
 
   if (data.estimatedRange === "N/A") {
      return (
-        <div className="w-full max-w-2xl mx-auto mt-8 bg-red-500/10 border border-red-500/20 rounded-2xl p-6 backdrop-blur-sm">
-            <div className="flex items-start gap-4">
+        <div className="w-full max-w-2xl mx-auto mt-8 bg-red-500/10 border border-red-500/20 rounded-2xl p-6 backdrop-blur-sm animate-in fade-in zoom-in duration-300">
+            <div className="flex items-start gap-4 mb-6">
                 <AlertTriangle className="text-red-400 shrink-0 mt-1" size={24} />
                 <div>
                     <h3 className="text-xl font-bold text-red-200 mb-2">Analysis Failed</h3>
                     <p className="text-red-200/80 leading-relaxed">{data.muscleDefinitionAnalysis}</p>
                 </div>
             </div>
+
+            {data.suggestions && data.suggestions.length > 0 && (
+               <div className="bg-slate-900/50 rounded-xl p-5 border border-slate-700/50">
+                  <h4 className="text-emerald-400 font-medium mb-3 flex items-center gap-2 text-sm uppercase tracking-wider">
+                     <Lightbulb size={16} />
+                     How to get a better result
+                  </h4>
+                  <ul className="grid gap-3">
+                     {data.suggestions.map((suggestion, idx) => (
+                        <li key={idx} className="flex items-start gap-3 text-slate-300 text-sm">
+                           <div className="mt-0.5 min-w-[16px]">
+                             <CheckCircle2 size={16} className="text-slate-500" />
+                           </div>
+                           <span>{suggestion}</span>
+                        </li>
+                     ))}
+                  </ul>
+               </div>
+            )}
         </div>
      );
   }
@@ -164,12 +216,11 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ data, originalIm
             </div>
             
             <button 
-              onClick={generateShareImage}
-              disabled={isGenerating}
-              className="flex items-center gap-2 bg-emerald-600/20 hover:bg-emerald-600/30 text-emerald-400 px-4 py-2 rounded-full text-sm font-medium transition-colors border border-emerald-500/20 hover:border-emerald-500/40"
+              onClick={initShare}
+              className="flex items-center gap-2 bg-gradient-to-r from-emerald-500 to-emerald-400 hover:from-emerald-400 hover:to-emerald-300 text-slate-900 px-6 py-2.5 rounded-full text-sm font-bold transition-all shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/40 hover:scale-105 transform"
             >
-              <Share2 size={16} />
-              {isGenerating ? 'Generating...' : 'Share'}
+              <Share2 size={18} />
+              Share Result
             </button>
           </div>
         </div>
@@ -222,11 +273,11 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ data, originalIm
       {/* Share Modal */}
       {showShareModal && shareImageUrl && (
         <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-lg flex flex-col overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200">
+          <div className="bg-slate-900 border border-slate-700 rounded-3xl w-full max-w-lg flex flex-col overflow-hidden shadow-2xl animate-in zoom-in-95 duration-200 max-h-[90vh]">
             <div className="p-4 border-b border-slate-700 flex justify-between items-center bg-slate-800/50">
               <h3 className="font-semibold text-white flex items-center gap-2">
                 <Share2 size={18} className="text-emerald-400" />
-                Share Analysis
+                Customize & Share
               </h3>
               <button 
                 onClick={() => setShowShareModal(false)}
@@ -236,25 +287,55 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ data, originalIm
               </button>
             </div>
             
-            <div className="p-6 bg-black/20 flex items-center justify-center">
-              <img 
-                src={shareImageUrl} 
-                alt="Shareable Result" 
-                className="max-h-[60vh] w-auto rounded-lg shadow-lg border border-slate-700" 
-              />
+            <div className="flex-1 overflow-y-auto p-6 bg-black/20 flex flex-col items-center gap-4">
+              
+              {/* Custom Branding Input */}
+              <div className="w-full">
+                <label className="block text-xs text-slate-400 mb-2 font-medium uppercase tracking-wide">
+                  Custom Branding Text
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    maxLength={30}
+                    value={brandingText}
+                    onChange={(e) => setBrandingText(e.target.value)}
+                    className="w-full bg-slate-800 border border-slate-600 text-white rounded-xl px-4 py-3 focus:ring-2 focus:ring-emerald-500 focus:border-emerald-500 outline-none transition-all pl-10"
+                    placeholder="Enter custom text..."
+                  />
+                  <Edit3 size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500" />
+                </div>
+              </div>
+
+              {/* Preview */}
+              <div className="relative rounded-lg overflow-hidden shadow-lg border border-slate-700 bg-slate-950">
+                <img 
+                  src={shareImageUrl} 
+                  alt="Shareable Result" 
+                  className={`max-h-[45vh] w-auto transition-opacity duration-300 ${isGenerating ? 'opacity-50' : 'opacity-100'}`} 
+                />
+                {isGenerating && (
+                   <div className="absolute inset-0 flex items-center justify-center">
+                      <div className="w-8 h-8 border-2 border-emerald-500 border-t-transparent rounded-full animate-spin"></div>
+                   </div>
+                )}
+              </div>
+              <p className="text-xs text-slate-500">Preview updates automatically</p>
             </div>
 
-            <div className="p-4 bg-slate-800/50 flex gap-3">
+            <div className="p-4 bg-slate-800/50 flex gap-3 mt-auto border-t border-slate-800">
               <button 
                 onClick={handleNativeShare}
-                className="flex-1 flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-xl transition-all font-medium shadow-lg shadow-emerald-900/20"
+                disabled={isGenerating}
+                className="flex-1 flex items-center justify-center gap-2 bg-emerald-600 hover:bg-emerald-500 text-white py-3 rounded-xl transition-all font-medium shadow-lg shadow-emerald-900/20 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Share2 size={18} />
                 Share Image
               </button>
               <button 
                 onClick={handleDownload}
-                className="flex-1 flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-600 text-white py-3 rounded-xl transition-all font-medium border border-slate-600"
+                disabled={isGenerating}
+                className="flex-1 flex items-center justify-center gap-2 bg-slate-700 hover:bg-slate-600 text-white py-3 rounded-xl transition-all font-medium border border-slate-600 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 <Download size={18} />
                 Download

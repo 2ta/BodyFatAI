@@ -4,7 +4,7 @@ import { AnalysisResult } from './components/AnalysisResult';
 import { LoadingSpinner } from './components/LoadingSpinner';
 import { analyzeBodyFatImage } from './services/geminiService';
 import { BodyFatAnalysis } from './types';
-import { Dumbbell, Sparkles } from 'lucide-react';
+import { Dumbbell, Sparkles, RotateCcw } from 'lucide-react';
 
 const App: React.FC = () => {
   const [selectedImage, setSelectedImage] = useState<string | null>(null);
@@ -81,10 +81,20 @@ const App: React.FC = () => {
           {loading && <LoadingSpinner />}
 
           {analysis && !loading && (
-            <AnalysisResult 
-              data={analysis} 
-              originalImage={selectedImage} 
-            />
+            <div className="w-full flex flex-col items-center gap-10 animate-in fade-in slide-in-from-bottom-4 duration-500">
+              <AnalysisResult 
+                data={analysis} 
+                originalImage={selectedImage} 
+              />
+              
+              <button 
+                onClick={handleClear}
+                className="group flex items-center gap-2 px-8 py-4 rounded-full bg-slate-800/80 hover:bg-slate-700 text-slate-300 hover:text-white transition-all border border-slate-700 hover:border-emerald-500/50 shadow-lg"
+              >
+                <RotateCcw size={18} className="group-hover:-rotate-180 transition-transform duration-500 text-emerald-500" />
+                Analyze New Photo
+              </button>
+            </div>
           )}
 
         </main>

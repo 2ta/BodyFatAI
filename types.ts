@@ -5,6 +5,7 @@ export interface BodyFatAnalysis {
   muscleDefinitionAnalysis: string;
   healthTips: string[];
   disclaimer: string;
+  suggestions?: string[];
 }
 
 export interface AnalysisState {
