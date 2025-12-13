@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">BodyFatAI</string>
+    <string name="title_activity_main">BodyFatAI</string>
+    <string name="package_name">com.bodyfatai.app</string>
+    <string name="custom_url_scheme">com.bodyfatai.app</string>
+</resources>
