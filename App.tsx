@@ -1,10 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { ImageUpload } from './components/ImageUpload';
 import { AnalysisResult } from './components/AnalysisResult';
 import { SplashScreen } from './components/SplashScreen';
 import { analyzeBodyFatImage } from './services/geminiService';
+import { checkReminderDue, clearReminder, setupTwoWeekReminder, requestNotificationPermission } from './services/notificationService';
 import { BodyFatAnalysis } from './types';
-import { Dumbbell, Sparkles, RotateCcw } from 'lucide-react';
+import { Dumbbell, Sparkles, RotateCcw, Clock, X } from 'lucide-react';
 import { logEvent, AnalyticsEvents } from './services/analytics';
 
 const App: React.FC = () => {
@@ -13,6 +14,24 @@ const App: React.FC = () => {
   const [analysis, setAnalysis] = useState<BodyFatAnalysis | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  
+  // Reminder State
+  const [showReminder, setShowReminder] = useState(false);
+
+  useEffect(() => {
+    // 1. Request Notification Permission immediately at startup
+    // Note: Browsers may block this if not user-triggered, but satisfying "at the beginning" requirement.
+    // If blocked, user can enable in browser settings.
+    requestNotificationPermission().then(granted => {
+      console.log("Notification permission status:", granted ? "Granted" : "Denied/Dismissed");
+    });
+
+    // 2. Check if a reminder is due
+    const isDue = checkReminderDue();
+    if (isDue) {
+      setShowReminder(true);
+    }
+  }, []);
 
   const handleImageSelect = async (base64: string) => {
     setSelectedImage(base64);
@@ -29,10 +48,19 @@ const App: React.FC = () => {
     try {
       const result = await analyzeBodyFatImage(base64);
       setAnalysis(result);
+      
+      // Auto-schedule reminder for 2 weeks
+      setupTwoWeekReminder();
+
       // Log Success
       logEvent(AnalyticsEvents.ANALYSIS_SUCCESS, { 
         confidence: result.confidenceLevel 
       });
+      // If we successfully analyzed, we can assume the user "checked in"
+      if (showReminder) {
+         clearReminder();
+         setShowReminder(false);
+      }
     } catch (err) {
       const errorMessage = err instanceof Error ? err.message : 'Failed to analyze image';
       setError(errorMessage);
@@ -48,6 +76,10 @@ const App: React.FC = () => {
     setAnalysis(null);
     setError(null);
   };
+
+  const dismissReminder = () => {
+    setShowReminder(false);
+  }
 
   // Determine container classes
   // Changed from fixed height (h-[100dvh]) to min-height to allow scrolling
@@ -68,11 +100,27 @@ const App: React.FC = () => {
            <div className="absolute bottom-[-10%] right-[-10%] w-[40%] h-[40%] bg-blue-500/5 rounded-full blur-[120px]"></div>
         </div>
 
+        {/* Reminder Banner */}
+        {showReminder && (
+           <div className="fixed top-0 inset-x-0 z-50 bg-blue-600/90 backdrop-blur-md text-white px-4 py-3 shadow-lg flex items-center justify-between animate-in slide-in-from-top-full duration-500">
+              <div className="flex items-center gap-3">
+                 <Clock className="animate-pulse" size={20} />
+                 <div>
+                    <p className="text-sm font-bold">Time for your check-up!</p>
+                    <p className="text-xs text-blue-100">It's been 2 weeks since your last goal.</p>
+                 </div>
+              </div>
+              <button onClick={dismissReminder} className="p-1 hover:bg-blue-700 rounded-full transition-colors">
+                 <X size={18} />
+              </button>
+           </div>
+        )}
+
         {/* Main Container with Safe Area Awareness */}
         <div className={`relative max-w-6xl mx-auto px-4 h-full flex flex-col items-center ${analysis ? '' : 'justify-between'}`}>
           
           {/* Header */}
-          <header className={`text-center space-y-4 transition-all duration-500 ${analysis ? 'mb-8' : 'mt-4 md:mt-0 flex-none'}`}>
+          <header className={`text-center space-y-4 transition-all duration-500 ${analysis ? 'mb-8' : 'mt-4 md:mt-0 flex-none'} ${showReminder ? 'pt-12' : ''}`}>
             {!analysis && (
               <div className="inline-flex items-center justify-center p-3 bg-slate-800/50 rounded-2xl border border-slate-700/50 backdrop-blur-sm mb-2 shadow-lg shadow-emerald-500/5 animate-in fade-in slide-in-from-top-4 duration-700">
                 <Dumbbell className="text-emerald-400 mr-2" size={24} />

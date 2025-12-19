@@ -1,6 +1,6 @@
 // Your Google Analytics Measurement ID
 // TODO: Replace 'G-REPLACE_ME' with your actual ID from analytics.google.com
-const MEASUREMENT_ID = 'G-REPLACE_ME';
+const MEASUREMENT_ID: string = 'G-M08QGKX32N';
 
 declare global {
   interface Window {
