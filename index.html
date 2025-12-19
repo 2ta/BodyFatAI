@@ -2,11 +2,29 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
     <meta name="theme-color" content="#020617" />
     <meta name="description" content="AI-powered body fat estimation and physique analysis" />
+    
+    <!-- PWA / Mobile App Settings -->
     <link rel="manifest" href="/manifest.json" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="BodyFatAI" />
+    
+    <!-- Branding Icons -->
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <link rel="apple-touch-icon" href="/logo.svg" />
+
     <title>BodyFatAI - Visual Estimator</title>
+    
+    <!-- CRITICAL: Polyfill for process.env to prevent startup crashes -->
+    <script>
+      if (typeof process === 'undefined') {
+        window.process = { env: {} };
+      }
+    </script>
+
     <script src="https://cdn.tailwindcss.com"></script>
     <script>
       tailwind.config = {
@@ -25,6 +43,15 @@
             animation: {
               'pulse-slow': 'pulse 3s cubic-bezier(0.4, 0, 0.6, 1) infinite',
               'spin-slow': 'spin 3s linear infinite',
+              'scan': 'scan 2.5s ease-in-out infinite',
+            },
+            keyframes: {
+              scan: {
+                '0%': { top: '0%', opacity: '0.4' },
+                '10%': { opacity: '1' },
+                '90%': { opacity: '1' },
+                '100%': { top: '100%', opacity: '0.4' },
+              }
             }
           },
         },
@@ -35,8 +62,13 @@
         background-color: #020617;
         color: #f8fafc;
         font-family: 'Inter', sans-serif;
-        /* Prevent pull-to-refresh on mobile */
+        /* Prevent pull-to-refresh on mobile to feel more native */
         overscroll-behavior-y: none;
+        /* Handle Safe Areas for iPhone X+ */
+        padding-top: env(safe-area-inset-top);
+        padding-bottom: env(safe-area-inset-bottom);
+        padding-left: env(safe-area-inset-left);
+        padding-right: env(safe-area-inset-right);
       }
       /* Custom scrollbar for webkit */
       ::-webkit-scrollbar {
@@ -52,7 +84,27 @@
       ::-webkit-scrollbar-thumb:hover {
         background: #475569; 
       }
+      
+      /* Grid Pattern for Scanner */
+      .bg-grid-pattern {
+        background-size: 30px 30px;
+        background-image: 
+          linear-gradient(to right, rgba(16, 185, 129, 0.05) 1px, transparent 1px),
+          linear-gradient(to bottom, rgba(16, 185, 129, 0.05) 1px, transparent 1px);
+      }
     </style>
+  <script type="importmap">
+{
+  "imports": {
+    "lucide-react": "https://aistudiocdn.com/lucide-react@^0.554.0",
+    "@google/genai": "https://aistudiocdn.com/@google/genai@^1.30.0",
+    "react/": "https://aistudiocdn.com/react@^19.2.0/",
+    "react": "https://aistudiocdn.com/react@^19.2.0",
+    "react-dom/client": "https://aistudiocdn.com/react-dom@^19.2.0/client",
+    "react-dom/": "https://aistudiocdn.com/react-dom@^19.2.0/"
+  }
+}
+</script>
 </head>
   <body>
     <div id="root"></div>

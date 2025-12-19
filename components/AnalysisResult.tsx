@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { BodyFatAnalysis } from '../types';
-import { Activity, Info, AlertTriangle, CheckCircle2, Share2, Download, X, Edit3, Camera, Lightbulb } from 'lucide-react';
+import { Activity, Info, AlertTriangle, CheckCircle2, Share2, Download, X, Edit3, ShieldCheck, UserCog, Lightbulb, Save } from 'lucide-react';
+import { logEvent, AnalyticsEvents } from '../services/analytics';
 
 interface AnalysisResultProps {
   data: BodyFatAnalysis;
@@ -16,8 +17,23 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ data, originalIm
   const [brandingText, setBrandingText] = useState('BodyFatAI Analysis');
   const [debouncedBrandingText, setDebouncedBrandingText] = useState(brandingText);
 
+  // Result Editing State
+  const [currentValue, setCurrentValue] = useState(data.estimatedRange);
+  const [isEditing, setIsEditing] = useState(false);
+  const [editInput, setEditInput] = useState('');
+  
+  // Check if the current value differs from the original AI prediction
+  const isManuallyAdjusted = currentValue !== data.estimatedRange;
+
   // Cache the loaded image to avoid reloading it constantly
   const imageRef = useRef<HTMLImageElement | null>(null);
+
+  // Reset state when new data comes in
+  useEffect(() => {
+    setCurrentValue(data.estimatedRange);
+    setIsEditing(false);
+    setEditInput('');
+  }, [data]);
 
   // Debounce the text input to prevent canvas trashing
   useEffect(() => {
@@ -45,43 +61,68 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ data, originalIm
       ctx.drawImage(img, 0, 0);
 
       // --- Draw Overlay ---
-      const gradientHeight = canvas.height * 0.5; 
+      const gradientHeight = canvas.height * 0.55; 
       const gradient = ctx.createLinearGradient(0, canvas.height - gradientHeight, 0, canvas.height);
       gradient.addColorStop(0, 'transparent');
-      gradient.addColorStop(0.4, 'rgba(2, 6, 23, 0.7)');
-      gradient.addColorStop(1, 'rgba(2, 6, 23, 0.95)');
+      gradient.addColorStop(0.3, 'rgba(2, 6, 23, 0.8)');
+      gradient.addColorStop(1, 'rgba(2, 6, 23, 0.98)');
       
       ctx.fillStyle = gradient;
       ctx.fillRect(0, canvas.height - gradientHeight, canvas.width, gradientHeight);
 
       // Helper for responsive font sizing
       const baseUnit = Math.min(canvas.width, canvas.height);
-      const padding = baseUnit * 0.05;
+      const padding = baseUnit * 0.06;
 
       // 1. Custom Branding (Bottom Right)
       const brandSize = baseUnit * 0.04;
       ctx.font = `bold ${brandSize}px "Inter", sans-serif`;
-      ctx.fillStyle = 'rgba(255, 255, 255, 0.8)';
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.9)';
       ctx.textAlign = 'right';
-      ctx.shadowColor = "rgba(0,0,0,0.5)";
-      ctx.shadowBlur = 4;
+      ctx.shadowColor = "rgba(0,0,0,0.8)";
+      ctx.shadowBlur = 8;
       ctx.fillText(text, canvas.width - padding, canvas.height - padding);
       
       // Reset shadow
       ctx.shadowBlur = 0;
 
-      // 2. Estimated Range (Main Metric - Bottom Left)
-      const valueSize = baseUnit * 0.12;
+      // 2. Main Metric (Bottom Left)
+      const valueSize = baseUnit * 0.14;
       ctx.font = `bold ${valueSize}px "Inter", sans-serif`;
-      ctx.fillStyle = '#34d399'; // Emerald-400
+      
+      // Change color based on source
+      if (isManuallyAdjusted) {
+          ctx.fillStyle = '#fbbf24'; // Amber-400 for manual
+      } else {
+          ctx.fillStyle = '#34d399'; // Emerald-400 for AI
+      }
+      
       ctx.textAlign = 'left';
-      ctx.fillText(data.estimatedRange, padding, canvas.height - padding - (baseUnit * 0.06));
+      const valueY = canvas.height - padding - (baseUnit * 0.08);
+      ctx.fillText(currentValue, padding, valueY);
 
       // 3. Label (Above Metric)
       const labelSize = baseUnit * 0.035;
-      ctx.font = `${labelSize}px "Inter", sans-serif`;
-      ctx.fillStyle = '#cbd5e1'; // Slate-300
-      ctx.fillText('Estimated Body Fat', padding, canvas.height - padding - (baseUnit * 0.06) - valueSize - (baseUnit * 0.01));
+      ctx.font = `600 ${labelSize}px "Inter", sans-serif`;
+      ctx.fillStyle = '#e2e8f0'; // Slate-200
+      
+      const labelText = isManuallyAdjusted ? "Self-Reported Body Fat" : "Estimated Body Fat";
+      const labelY = valueY - valueSize - (baseUnit * 0.02);
+      ctx.fillText(labelText, padding, labelY);
+
+      // 4. Source Footnote (If adjusted)
+      if (isManuallyAdjusted) {
+         const noteSize = baseUnit * 0.025;
+         ctx.font = `italic ${noteSize}px "Inter", sans-serif`;
+         ctx.fillStyle = 'rgba(251, 191, 36, 0.8)'; // Dim Amber
+         ctx.fillText("Source: User Adjustment", padding, canvas.height - padding + noteSize + 5);
+      } else {
+         // Draw Confidence pill for AI result
+         const confSize = baseUnit * 0.025;
+         ctx.font = `${confSize}px "Inter", sans-serif`;
+         ctx.fillStyle = '#94a3b8';
+         ctx.fillText(`AI Confidence: ${data.confidenceLevel}`, padding, canvas.height - padding + confSize + 5);
+      }
 
       const dataUrl = canvas.toDataURL('image/png', 1.0);
       setShareImageUrl(dataUrl);
@@ -90,7 +131,7 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ data, originalIm
     } finally {
       setIsGenerating(false);
     }
-  }, [data.estimatedRange]);
+  }, [currentValue, isManuallyAdjusted, data.confidenceLevel]);
 
   const initShare = async () => {
     if (!originalImage) return;
@@ -119,6 +160,7 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ data, originalIm
 
 
   const handleDownload = () => {
+    logEvent(AnalyticsEvents.DOWNLOAD_RESULT);
     if (shareImageUrl) {
       const link = document.createElement('a');
       link.href = shareImageUrl;
@@ -129,6 +171,8 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ data, originalIm
 
   const handleNativeShare = async () => {
     if (!shareImageUrl) return;
+    
+    logEvent(AnalyticsEvents.SHARE_RESULT);
 
     try {
       const blob = await (await fetch(shareImageUrl)).blob();
@@ -136,7 +180,7 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ data, originalIm
       
       const shareData = {
         title: brandingText,
-        text: `Estimated Body Fat: ${data.estimatedRange}\nConfidence Level: ${data.confidenceLevel}\n\nAnalyzed by BodyFatAI`,
+        text: `Body Fat: ${currentValue} ${isManuallyAdjusted ? '(Self-Reported)' : '(AI Estimated)'}\n\nAnalyzed by BodyFatAI`,
         files: [file],
       };
 
@@ -156,6 +200,29 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ data, originalIm
       handleDownload();
     }
   };
+
+  // --- Handle Editing Logic ---
+  const startEditing = () => {
+    setEditInput(currentValue);
+    setIsEditing(true);
+  };
+
+  const cancelEditing = () => {
+    setIsEditing(false);
+    setEditInput('');
+  };
+
+  const saveEditing = () => {
+    if (editInput.trim()) {
+      setCurrentValue(editInput.trim());
+    }
+    setIsEditing(false);
+  };
+
+  const resetToAI = () => {
+    setCurrentValue(data.estimatedRange);
+  }
+
 
   if (data.estimatedRange === "N/A") {
      return (
@@ -195,29 +262,79 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ data, originalIm
       
       {/* Primary Metric Card & Share Action */}
       <div className="grid md:grid-cols-2 gap-6">
+        
+        {/* Main Result Card */}
         <div className="bg-gradient-to-br from-slate-800 to-slate-900 rounded-3xl p-8 border border-slate-700/50 shadow-2xl relative overflow-hidden flex flex-col justify-between group">
           <div className="absolute top-0 right-0 p-4 opacity-10">
             <Activity size={120} />
           </div>
           
-          <div>
-            <h3 className="text-slate-400 text-sm font-medium uppercase tracking-wider mb-2">Estimated Body Fat</h3>
-            <div className="flex items-baseline gap-2 mb-4">
-              <span className="text-5xl md:text-6xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-emerald-400 to-teal-300">
-                {data.estimatedRange}
-              </span>
+          <div className="relative z-10">
+            <div className="flex items-center justify-between mb-3">
+               <h3 className="text-slate-400 text-sm font-medium uppercase tracking-wider flex items-center gap-2">
+                 {isManuallyAdjusted ? <UserCog size={14} className="text-amber-400" /> : <Activity size={14} className="text-emerald-400" />}
+                 {isManuallyAdjusted ? 'Self-Reported' : 'Estimated Body Fat'}
+               </h3>
+               {isManuallyAdjusted && (
+                 <button onClick={resetToAI} className="text-[10px] bg-slate-800 hover:bg-slate-700 text-slate-400 px-2 py-1 rounded-md border border-slate-700 transition-colors">
+                   Reset to AI
+                 </button>
+               )}
             </div>
+
+            {/* Editing Interface vs Display Interface */}
+            {isEditing ? (
+              <div className="flex items-center gap-2 mb-4 animate-in fade-in slide-in-from-left-2 duration-200">
+                <input 
+                  type="text" 
+                  value={editInput}
+                  onChange={(e) => setEditInput(e.target.value)}
+                  placeholder="e.g. 12-14%"
+                  className="bg-slate-950/50 border border-slate-600 rounded-xl px-4 py-3 text-2xl font-bold text-white w-full focus:ring-2 focus:ring-emerald-500 outline-none"
+                  autoFocus
+                />
+                <button onClick={saveEditing} className="bg-emerald-500 hover:bg-emerald-400 text-black p-3.5 rounded-xl transition-colors">
+                   <Save size={20} />
+                </button>
+                <button onClick={cancelEditing} className="bg-slate-700 hover:bg-slate-600 text-white p-3.5 rounded-xl transition-colors">
+                   <X size={20} />
+                </button>
+              </div>
+            ) : (
+              <div className="flex flex-col items-start gap-1 mb-4 group/val">
+                <div className="flex items-baseline gap-3">
+                  <span className={`text-5xl md:text-6xl font-bold text-transparent bg-clip-text bg-gradient-to-r ${isManuallyAdjusted ? 'from-amber-400 to-orange-300' : 'from-emerald-400 to-teal-300'}`}>
+                    {currentValue}
+                  </span>
+                </div>
+                
+                <button 
+                  onClick={startEditing}
+                  className="text-xs font-medium text-slate-500 hover:text-emerald-400 flex items-center gap-1.5 transition-colors px-2 py-1 -ml-2 rounded-lg hover:bg-slate-800/50"
+                >
+                  <Edit3 size={12} />
+                  Wrong result? Adjust manually
+                </button>
+              </div>
+            )}
           </div>
 
-          <div className="flex items-center justify-between mt-4">
-            <div className="flex items-center gap-2 text-slate-400 text-sm bg-slate-950/30 w-fit px-3 py-1.5 rounded-full border border-slate-700/30">
-              <Info size={14} />
-              <span>Confidence: <span className="text-emerald-400 font-medium">{data.confidenceLevel}</span></span>
-            </div>
+          <div className="flex items-center justify-between mt-4 relative z-10">
+            {isManuallyAdjusted ? (
+               <div className="flex items-center gap-2 text-slate-400 text-sm bg-amber-950/30 w-fit px-3 py-1.5 rounded-full border border-amber-900/30">
+                  <Info size={14} className="text-amber-400" />
+                  <span className="text-amber-200/80">User Modified</span>
+               </div>
+            ) : (
+               <div className="flex items-center gap-2 text-slate-400 text-sm bg-slate-950/30 w-fit px-3 py-1.5 rounded-full border border-slate-700/30">
+                 <ShieldCheck size={14} className="text-emerald-500" />
+                 <span>Confidence: <span className="text-emerald-400 font-medium">{data.confidenceLevel}</span></span>
+               </div>
+            )}
             
             <button 
               onClick={initShare}
-              className="flex items-center gap-2 bg-gradient-to-r from-emerald-500 to-emerald-400 hover:from-emerald-400 hover:to-emerald-300 text-slate-900 px-6 py-2.5 rounded-full text-sm font-bold transition-all shadow-lg shadow-emerald-500/20 hover:shadow-emerald-500/40 hover:scale-105 transform"
+              className="flex items-center gap-2 bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white px-6 py-2.5 rounded-full text-sm font-bold transition-all shadow-lg shadow-emerald-900/20 hover:shadow-emerald-900/40 hover:scale-105 transform active:scale-95"
             >
               <Share2 size={18} />
               Share Result
@@ -225,16 +342,17 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ data, originalIm
           </div>
         </div>
 
-        <div className="bg-slate-800/50 backdrop-blur-sm rounded-3xl p-8 border border-slate-700/50 flex flex-col justify-center">
-          <h3 className="text-slate-200 font-semibold mb-4 flex items-center gap-2">
-             <CheckCircle2 size={18} className="text-emerald-400" />
-             Visual Cues
+        {/* Visual Cues Card */}
+        <div className="bg-slate-800/40 backdrop-blur-sm rounded-3xl p-8 border border-slate-700/50 flex flex-col justify-center shadow-lg">
+          <h3 className="text-slate-200 font-semibold mb-6 flex items-center gap-2 text-lg">
+             <CheckCircle2 size={20} className="text-emerald-400" />
+             AI Visual Analysis
           </h3>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap gap-3">
             {data.visualCues.map((cue, idx) => (
               <span 
                 key={idx} 
-                className="bg-slate-700/50 text-slate-300 px-3 py-1.5 rounded-lg text-sm border border-slate-600/30"
+                className="bg-slate-700/40 hover:bg-slate-700/60 transition-colors text-slate-200 px-4 py-2 rounded-xl text-sm border border-slate-600/30"
               >
                 {cue}
               </span>
@@ -243,18 +361,10 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ data, originalIm
         </div>
       </div>
 
-      {/* Detailed Analysis */}
-      <div className="bg-slate-800/30 backdrop-blur-md rounded-3xl p-8 border border-slate-700/30">
-         <h3 className="text-xl font-semibold text-white mb-4">Physique Analysis</h3>
-         <p className="text-slate-300 leading-relaxed text-lg font-light">
-           {data.muscleDefinitionAnalysis}
-         </p>
-      </div>
-
       {/* Tips */}
       <div className="grid md:grid-cols-3 gap-4">
         {data.healthTips.map((tip, idx) => (
-            <div key={idx} className="bg-slate-800/40 p-6 rounded-2xl border border-slate-700/30">
+            <div key={idx} className="bg-slate-800/40 p-6 rounded-2xl border border-slate-700/30 hover:border-slate-600/50 transition-colors">
                 <div className="bg-emerald-500/10 w-8 h-8 rounded-full flex items-center justify-center text-emerald-400 font-bold mb-3 text-sm">
                     {idx + 1}
                 </div>
@@ -265,8 +375,11 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ data, originalIm
 
       {/* Disclaimer */}
       <div className="text-center p-4 opacity-60 hover:opacity-100 transition-opacity">
-        <p className="text-xs text-slate-500 max-w-2xl mx-auto">
+        <p className="text-xs text-slate-500 max-w-2xl mx-auto mb-2">
           {data.disclaimer}
+        </p>
+        <p className="text-[10px] text-slate-600 uppercase tracking-wide">
+           For 100% exact medical accuracy, please verify with a DEXA Scan or Hydrostatic Weighing.
         </p>
       </div>
 
@@ -320,7 +433,10 @@ export const AnalysisResult: React.FC<AnalysisResultProps> = ({ data, originalIm
                    </div>
                 )}
               </div>
-              <p className="text-xs text-slate-500">Preview updates automatically</p>
+              <p className="text-xs text-slate-500 flex items-center gap-1.5">
+                 <Info size={12} />
+                 {isManuallyAdjusted ? "Includes 'Self-Reported' label due to manual edit." : "Includes AI Confidence score."}
+              </p>
             </div>
 
             <div className="p-4 bg-slate-800/50 flex gap-3 mt-auto border-t border-slate-800">

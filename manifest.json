@@ -3,12 +3,17 @@
   "name": "BodyFatAI Physique Estimator",
   "icons": [
     {
-      "src": "https://aistudiocdn.com/lucide-react/dumbbell.svg",
+      "src": "/logo.svg",
+      "type": "image/svg+xml",
+      "sizes": "any"
+    },
+    {
+      "src": "/logo.svg",
       "type": "image/svg+xml",
       "sizes": "192x192"
     },
     {
-      "src": "https://aistudiocdn.com/lucide-react/dumbbell.svg",
+      "src": "/logo.svg",
       "type": "image/svg+xml",
       "sizes": "512x512"
     }

@@ -1,0 +1,32 @@
+<svg width="512" height="512" viewBox="0 0 512 512" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <rect width="512" height="512" rx="120" fill="#0f172a"/>
+  <rect width="512" height="512" rx="120" fill="url(#grad1)"/>
+  
+  <!-- Main Dumbbell Shape -->
+  <path d="M174 190H150C137.85 190 128 180.15 128 168C128 155.85 137.85 146 150 146H174C186.15 146 196 155.85 196 168C196 180.15 186.15 190 174 190Z" fill="#34D399"/>
+  <path d="M362 190H338C325.85 190 316 180.15 316 168C316 155.85 325.85 146 338 146H362C374.15 146 384 155.85 384 168C384 180.15 374.15 190 362 190Z" fill="#34D399"/>
+  <path d="M174 366H150C137.85 366 128 356.15 128 344C128 331.85 137.85 322 150 322H174C186.15 322 196 331.85 196 344C196 356.15 186.15 366 174 366Z" fill="#34D399"/>
+  <path d="M362 366H338C325.85 366 316 356.15 316 344C316 331.85 325.85 322 338 322H362C374.15 322 384 331.85 384 344C384 356.15 374.15 366 362 366Z" fill="#34D399"/>
+  
+  <!-- Bars -->
+  <rect x="164" y="168" width="48" height="176" rx="12" fill="#10B981"/>
+  <rect x="300" y="168" width="48" height="176" rx="12" fill="#10B981"/>
+  <rect x="212" y="232" width="88" height="48" rx="8" fill="#10B981"/>
+  
+  <!-- AI Sparkle/Glint -->
+  <path d="M404 116L393.5 92L383 116L359 126.5L383 137L393.5 161L404 137L428 126.5L404 116Z" fill="white" filter="url(#glow)"/>
+  
+  <defs>
+    <radialGradient id="grad1" cx="0" cy="0" r="1" gradientUnits="userSpaceOnUse" gradientTransform="translate(256 0) rotate(90) scale(512)">
+      <stop stop-color="#1E293B" stop-opacity="0.5"/>
+      <stop offset="1" stop-color="#020617"/>
+    </radialGradient>
+    <filter id="glow" x="350" y="80" width="100" height="100" filterUnits="userSpaceOnUse">
+      <feGaussianBlur stdDeviation="4" result="coloredBlur"/>
+      <feMerge>
+        <feMergeNode in="coloredBlur"/>
+        <feMergeNode in="SourceGraphic"/>
+      </feMerge>
+    </filter>
+  </defs>
+</svg>

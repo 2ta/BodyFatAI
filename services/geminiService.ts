@@ -1,7 +1,15 @@
 import { GoogleGenAI, Type, HarmCategory, HarmBlockThreshold } from "@google/genai";
 import { BodyFatAnalysis } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.API_KEY });
+let aiClient: GoogleGenAI | null = null;
+
+// Lazy initialize the client to prevent crashes if process.env isn't ready at module load
+const getAiClient = () => {
+  if (!aiClient) {
+    aiClient = new GoogleGenAI({ apiKey: process.env.API_KEY });
+  }
+  return aiClient;
+};
 
 // Helper to sanitize JSON string (remove markdown code blocks)
 const cleanJsonString = (text: string): string => {
@@ -17,8 +25,10 @@ export const analyzeBodyFatImage = async (base64Image: string): Promise<BodyFatA
   // 120s timeout to prevent premature timeout
   const timeoutMs = 120000;
   
+  const ai = getAiClient();
+
   const apiCall = ai.models.generateContent({
-    model: "gemini-2.5-flash",
+    model: "gemini-3-flash-preview",
     contents: {
       parts: [
         {
@@ -28,45 +38,29 @@ export const analyzeBodyFatImage = async (base64Image: string): Promise<BodyFatA
           },
         },
         {
-          text: `You are an expert sports physiologist and anthropometrist with deep expertise in body composition analysis. 
+          text: `You are an expert sports physiologist and anthropometrist. Analyze this image to estimate body fat percentage.
           
-          Analyze this image to estimate the body fat percentage of the person depicted. 
+          **CRITICAL ANALYSIS STEPS:**
+          1. **Identify Biological Sex & Frame:** Adjust estimation scale accordingly.
+          2. **Assess Composition:** Look for muscle separation, vascularity, and fat storage patterns.
           
-          **CRITICAL ANALYSIS STEPS (Perform these internally before generating JSON):**
-          1. **Identify Biological Sex:** Male and female body fat distributions and healthy ranges differ significantly. Adjust your scale accordingly.
-          2. **Observe Anatomical Markers:** Look for vascularity, muscle separation, and visibility of skeletal landmarks (ribs, collarbones, iliac crest).
-          3. **Assess Fat Storage Sites:** Analyze fat accumulation in the midsection, chest/breasts, hips, thighs, arms, and face.
-          4. **Evaluate High Body Fat Indicators:** 
-             - If there is no visible muscle definition, look for signs of higher body fat such as skin folding (rolls), significant abdominal overhang, wide waist-to-hip ratio, or general roundness.
-             - **Do not hesitate to estimate high ranges (e.g., 30-40%, 40-50%, or 50%+) if the visual evidence supports it.** 
-             - Differentiate between "overweight", "obese", and "morbidly obese" visual categories based on visual adipose tissue volume.
-          
-          Return a JSON object. 
-          If the image does not clearly show a person's physique suitable for analysis (e.g., fully clothed, bad lighting, not a person, too blurry, only face visible), 
-          set the estimatedRange to "N/A". 
-          
-          In the "muscleDefinitionAnalysis", be honest and direct about the observation. If the person has high body fat, describe it in clinical/neutral terms (e.g., "Significant subcutaneous adipose tissue visible in the abdominal and thoracic regions...") rather than being vague.
-
-          In the "suggestions" field, provide 3-4 specific, actionable tips for the user to take a better photo for this specific use case (e.g., "Ensure torso is visible", "Stand in front of a light source").
+          Return a JSON object. If the image is invalid (not a person, blurry, etc), set estimatedRange to "N/A" and explain why in "muscleDefinitionAnalysis".
 
           Required fields:
-          - estimatedRange: string (e.g., "12-15%", "25-30%", "45-50%", or "N/A")
-          - confidenceLevel: string (e.g., "High", "Medium", "Low")
-          - visualCues: array of strings (specific observations like "visible abs", "soft midsection", "skin folding")
-          - muscleDefinitionAnalysis: string (detailed assessment of composition)
-          - suggestions: array of strings (tips for better photo if N/A, otherwise general pose tips)
-          - healthTips: array of strings (3 general fitness/health tips tailored to the estimated level)
-          - disclaimer: string (Standard medical disclaimer)
+          - estimatedRange: string (e.g., "15-18%")
+          - confidenceLevel: string ("High", "Medium", "Low")
+          - visualCues: string[] (3-4 observations)
+          - muscleDefinitionAnalysis: string (Short description of findings or error reason)
+          - healthTips: string[] (3 general tips)
+          - suggestions: string[] (photo improvement tips)
+          - disclaimer: string
           `,
         },
       ],
     },
     config: {
-      // Disabled thinkingConfig to prevent RPC/timeout errors on unstable networks/proxies.
-      // The prompt steps above are designed to simulate the reasoning process.
-      maxOutputTokens: 4096, 
+      maxOutputTokens: 2048, 
       responseMimeType: "application/json",
-      // Adjust safety settings to allow physique analysis
       safetySettings: [
         {
           category: HarmCategory.HARM_CATEGORY_SEXUALLY_EXPLICIT,
@@ -103,14 +97,13 @@ export const analyzeBodyFatImage = async (base64Image: string): Promise<BodyFatA
           "visualCues",
           "muscleDefinitionAnalysis",
           "healthTips",
-          "disclaimer",
+          "disclaimer"
         ],
       },
     },
   });
 
   try {
-    // Race the API call against a timeout
     const response = await Promise.race([
       apiCall,
       new Promise<never>((_, reject) => 
@@ -135,7 +128,6 @@ export const analyzeBodyFatImage = async (base64Image: string): Promise<BodyFatA
     console.error("Error analyzing image:", error);
     let errorMessage = error.message || "Failed to analyze image. Please try again.";
     
-    // Catch specific XHR/RPC errors which often mean payload too large or connection reset
     if (typeof errorMessage === 'string' && (errorMessage.includes("Rpc failed") || errorMessage.includes("500") || errorMessage.includes("xhr error"))) {
       errorMessage = "Network error: The image may be too large or the service is temporarily unavailable. Please try a different, smaller image.";
     }
